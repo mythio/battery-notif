@@ -1,8 +1,6 @@
 package api
 
 import (
-	"fmt"
-
 	"github.com/mythio/battery-notif/pkg/api/system"
 	"github.com/mythio/battery-notif/pkg/common/util/battery"
 	"github.com/mythio/battery-notif/pkg/common/util/notify"
@@ -14,7 +12,7 @@ func Start() error {
 	notifySvc := notify.New()
 
 	sys := system.InitService(batterySvc, notifySvc)
-	fmt.Println(sys.Battery.GetCurrentBatteryPercentage())
+	sys.Run()
 
 	return nil
 }

@@ -13,8 +13,14 @@ import (
 // Service provides battery percentage extraction implementation
 type Service struct{}
 
+// Status holds the battery percentage and state
+type Status struct {
+	IsCharging bool
+	Percentage uint16
+}
+
 type result struct {
-	result uint16
+	result Status
 	err    error
 }
 
@@ -24,7 +30,7 @@ func New() Service {
 }
 
 // GetCurrentBatteryPercentage returns current battery percentage
-func (s Service) GetCurrentBatteryPercentage() (uint16, error) {
+func (s Service) GetCurrentBatteryPercentage() (Status, error) {
 	ch := make(chan result, 1)
 
 	go func() {
@@ -33,34 +39,41 @@ func (s Service) GetCurrentBatteryPercentage() (uint16, error) {
 		defer cancel()
 
 		upower := exec.CommandContext(ctx, "upower", "-i", "/org/freedesktop/UPower/devices/battery_BAT0")
-		grep := exec.CommandContext(ctx, "grep", "percentage")
+		grep := exec.CommandContext(ctx, "grep", "-e", "percentage", "-e", "state")
 
 		grep.Stdin, err = upower.StdoutPipe()
+
 		if err != nil {
-			ch <- result{0, errors.New("grep pipe error")}
+			ch <- result{Status{}, errors.New("grep pipe error")}
 		}
 
-		out := &bytes.Buffer{}
-		grep.Stdout = out
+		outPercentage := &bytes.Buffer{}
+		grep.Stdout = outPercentage
 
 		if err = grep.Start(); err != nil {
-			ch <- result{0, errors.New("grep exec error")}
+			ch <- result{Status{}, errors.New("grep exec error")}
 			return
 		}
 		if err = upower.Run(); err != nil {
-			ch <- result{0, errors.New("grep exec error")}
+			ch <- result{Status{}, errors.New("grep exec error")}
 			return
 		}
 
-		res := out.String()
+		res := strings.Split(outPercentage.String(), "\n")
 
-		percentageStr := strings.Trim(res[len(res)-4:len(res)-1], " ")
+		/**
+		 * res[0] holds state
+		 * res[1] holds percentage
+		 */
+		percentageStr := strings.Trim(res[1][len(res[1])-4:len(res[1])-1], " ")
 		percentage, err := strconv.ParseInt(percentageStr, 10, 16)
 		if err != nil {
-			ch <- result{0, errors.New("grep exec error")}
+			ch <- result{Status{}, errors.New("grep exec error")}
 		}
 
-		ch <- result{uint16(percentage), nil}
+		state := strings.Trim(res[0][len(res[0])-14:], " ")
+
+		ch <- result{Status{Percentage: uint16(percentage), IsCharging: state == "charging"}, nil}
 	}()
 
 	res := <-ch
